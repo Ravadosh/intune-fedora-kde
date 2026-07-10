@@ -60,10 +60,13 @@ if repo_registered "microsoft-edge"; then
   ok "Edge repo already configured, skipping."
 else
   # dnf5 syntax: '--add-repo' (dnf4) is not recognized and errors with
-  # 'Unknown argument "--add-repo"'. dnf5 uses 'addrepo --from-repofile='
-  # even for a plain .repo file URL (not just config.repo endpoints).
+  # 'Unknown argument "--add-repo"'. dnf5 uses 'addrepo --from-repofile='.
+  # IMPORTANT: must point at .../edge/config.repo directly, same as the
+  # rhel9.0-prod repo above — the bare directory URL returns an HTML index
+  # page, and dnf5 tries (and fails) to parse that as ini: "Error in
+  # configuration file ... Missing section header on line 2".
   dnf config-manager addrepo \
-    --from-repofile=https://packages.microsoft.com/yumrepos/edge
+    --from-repofile=https://packages.microsoft.com/yumrepos/edge/config.repo
   ok "Edge repo added."
 fi
 
