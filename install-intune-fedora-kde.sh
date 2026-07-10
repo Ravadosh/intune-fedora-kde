@@ -110,7 +110,8 @@ fi
 # microsoft-identity-broker: DO NOT trust this landed transitively.
 # Previous version of this script assumed intune-portal's dependency graph
 # would always pull this in — that held on the test VM but did NOT hold on
-# real corporate hardware. Verify explicitly and install directly if absent.
+# real corporate hardware earlier. Verify explicitly and install directly
+# if absent.
 if rpm -q microsoft-identity-broker &>/dev/null; then
   ok "microsoft-identity-broker already installed."
 else
@@ -119,11 +120,25 @@ else
   ok "microsoft-identity-broker installed explicitly."
 fi
 
-if systemctl is-enabled microsoft-identity-broker &>/dev/null; then
-  ok "microsoft-identity-broker service already enabled."
+# IMPORTANT: as of the 2.0.2+ rewrite (Java -> C++), microsoft-identity-broker
+# is NO LONGER a systemd unit at all — Microsoft's own docs confirm the user
+# broker is now a plain executable invoked on-demand via D-Bus activation,
+# not a persistent daemon. `systemctl enable --now microsoft-identity-broker`
+# will always fail with "Unit does not exist" on current versions; that is
+# expected and not an error condition, so don't treat it as one.
+#
+# The one broker component that IS still a real systemd unit is the
+# system-level DEVICE broker, microsoft-identity-device-broker.service.
+# That's the one worth checking/enabling.
+if systemctl list-unit-files microsoft-identity-device-broker.service &>/dev/null; then
+  if systemctl is-enabled microsoft-identity-device-broker &>/dev/null; then
+    ok "microsoft-identity-device-broker service already enabled."
+  else
+    systemctl enable --now microsoft-identity-device-broker
+    ok "microsoft-identity-device-broker service enabled and started."
+  fi
 else
-  systemctl enable --now microsoft-identity-broker
-  ok "microsoft-identity-broker service enabled and started."
+  warn "microsoft-identity-device-broker.service unit not found — this may be expected on this broker version. Verify with 'dsreg --status' after sign-in rather than via systemctl."
 fi
 
 # SSSD: microsoft-identity-broker's postinstall creates an authselect
