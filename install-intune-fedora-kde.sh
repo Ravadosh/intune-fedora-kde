@@ -36,37 +36,29 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # ---------------------------------------------------------------------------
 log "Step 0 — Microsoft repos"
 # ---------------------------------------------------------------------------
-# IMPORTANT: dnf5's 'config-manager addrepo --from-repofile=' always writes
-# the result to /etc/yum.repos.d/config.repo, regardless of source filename
-# or repo ID inside it. Checking for a specific .repo filename here is
-# useless (the file we'd be checking for is never the one actually created)
-# and re-running the same addrepo command a second time fails because
-# config.repo already exists. Check by repo ID via `dnf repolist` instead —
-# that's stable across dnf4/dnf5 and across however the file got named.
+# IMPORTANT: dnf5's 'config-manager addrepo --from-repofile=' ALWAYS writes
+# the result to /etc/yum.repos.d/config.repo — regardless of which repo
+# you're adding or what its ID is. That's fine for a single repo, but the
+# second call collides on that same filename and dnf5 refuses to overwrite
+# it ("File config.repo already exists ... Add --overwrite"). Since we add
+# two repos here, write each one to its own explicit filename instead of
+# letting dnf5 pick the name.
 repo_registered() { dnf repolist --all 2>/dev/null | grep -q "^$1"; }
 
-if repo_registered "microsoft-rhel9.0-prod"; then
+if repo_registered "microsoft-rhel9.0-prod-yum"; then
   ok "intune-portal repo already configured, skipping."
 else
   rpm --import https://packages.microsoft.com/keys/microsoft.asc
-  # NOTE: must point at config.repo directly — the bare directory URL
-  # returns an HTML index page, which dnf will fail to parse as ini.
-  dnf config-manager addrepo \
-    --from-repofile=https://packages.microsoft.com/yumrepos/microsoft-rhel9.0-prod/config.repo
+  curl -fsSL https://packages.microsoft.com/yumrepos/microsoft-rhel9.0-prod/config.repo \
+    -o /etc/yum.repos.d/microsoft-rhel9.0-prod.repo
   ok "intune-portal repo added."
 fi
 
-if repo_registered "microsoft-edge"; then
+if repo_registered "edge-yum"; then
   ok "Edge repo already configured, skipping."
 else
-  # dnf5 syntax: '--add-repo' (dnf4) is not recognized and errors with
-  # 'Unknown argument "--add-repo"'. dnf5 uses 'addrepo --from-repofile='.
-  # IMPORTANT: must point at .../edge/config.repo directly, same as the
-  # rhel9.0-prod repo above — the bare directory URL returns an HTML index
-  # page, and dnf5 tries (and fails) to parse that as ini: "Error in
-  # configuration file ... Missing section header on line 2".
-  dnf config-manager addrepo \
-    --from-repofile=https://packages.microsoft.com/yumrepos/edge/config.repo
+  curl -fsSL https://packages.microsoft.com/yumrepos/edge/config.repo \
+    -o /etc/yum.repos.d/microsoft-edge.repo
   ok "Edge repo added."
 fi
 
