@@ -7,10 +7,10 @@
 set -euo pipefail
 
 # Colors for terminal output
-RED='\031[0;31m'
-GREEN='\032[0;32m'
-BLUE='\034[0;34m'
-NC='\030[0m' # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================================"${NC}
 echo -e "${BLUE}   Intune & Microsoft Edge Installer for Fedora KDE    "${NC}
@@ -22,7 +22,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 2. Detect Package Manager (DNF vs DNF5)
+# 2. Detect Package Manager (DNF5 vs DNF4)
 if command -v dnf5 &>/dev/null; then
   PKG_MGR="dnf5"
 else
@@ -30,30 +30,15 @@ else
 fi
 echo -e "${GREEN}[*] Using package manager: ${PKG_MGR}${NC}"
 
-# 3. Detect Fedora Version
 FEDORA_VER=$(rpm -E %fedora)
-echo -e "${GREEN}[*] Detected Fedora release: ${FEDORA_VER}${NC}"
+echo -e "${GREEN}[*] Target System: Fedora ${FEDORA_VER}${NC}"
 
-# 4. Enable EPEL & CodeReady/CRB if available (Safe failover)
-echo -e "${GREEN}[1/6] Installing EPEL and enabling CRB repository...${NC}"
-$PKG_MGR install -y epel-release || true
-if [ "$PKG_MGR" = "dnf5" ]; then
-  $PKG_MGR config-manager setopt crb.enabled=1 || true
-else
-  $PKG_MGR config-manager --set-enabled crb || true
-fi
-
-# 5. Import Microsoft GPG Keys
-echo -e "${GREEN}[2/6] Importing Microsoft GPG Keys...${NC}"
+# 3. Import Microsoft GPG Keys
+echo -e "${GREEN}[1/5] Importing Microsoft GPG Keys...${NC}"
 rpm --import https://packages.microsoft.com/keys/microsoft.asc
 
-# Check for version-specific RHEL/Fedora GPG key fallback if needed
-if curl -sI "https://packages.microsoft.com/fedora/${FEDORA_VER}/prod/repodata/repomd.xml.key" | grep -q "200 OK"; then
-  rpm --import "https://packages.microsoft.com/fedora/${FEDORA_VER}/prod/repodata/repomd.xml.key"
-fi
-
-# 6. Configure Repositories
-echo -e "${GREEN}[3/6] Setting up Microsoft Repositories...${NC}"
+# 4. Configure Microsoft Repositories
+echo -e "${GREEN}[2/5] Configuring Microsoft Edge & RHEL-Prod Repositories...${NC}"
 
 # Edge Repo
 tee /etc/yum.repos.d/microsoft-edge.repo > /dev/null << 'EOF'
@@ -65,38 +50,48 @@ gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
 
-# Dynamic Fedora Intune Repo
-tee /etc/yum.repos.d/microsoft-fedora-prod.repo > /dev/null << EOF
-[microsoft-fedora-prod]
-name=Microsoft Fedora ${FEDORA_VER} Production
-baseurl=https://packages.microsoft.com/fedora/${FEDORA_VER}/prod/
+# Intune Repo (Microsoft hosts intune-portal under the RHEL prod channels)
+tee /etc/yum.repos.d/microsoft-rhel-prod.repo > /dev/null << 'EOF'
+[microsoft-rhel-prod]
+name=Microsoft RHEL Production (Intune)
+baseurl=https://packages.microsoft.com/rhel/10/prod/
 enabled=1
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
 
-# 7. Refresh Cache & Install
-echo -e "${GREEN}[4/6] Refreshing cache and installing packages...${NC}"
+# 5. Refresh Cache
+echo -e "${GREEN}[3/5] Refreshing DNF metadata...${NC}"
 $PKG_MGR clean all > /dev/null
 $PKG_MGR makecache
 
-echo -e "${GREEN}[5/6] Installing Java 21, KDE Secret Storage, Edge, and Intune...${NC}"
+# 6. Install Java (Fallback for Fedora 44+ Java package renaming)
+echo -e "${GREEN}[4/5] Installing OpenJDK...${NC}"
+if $PKG_MGR list available java-21-openjdk &>/dev/null; then
+  JAVA_PKG="java-21-openjdk"
+elif $PKG_MGR list available java-25-openjdk &>/dev/null; then
+  JAVA_PKG="java-25-openjdk"
+else
+  JAVA_PKG="java-latest-openjdk"
+fi
+
+echo -e "${GREEN}[5/5] Installing ${JAVA_PKG}, Edge, and Intune...${NC}"
 $PKG_MGR install -y \
-    java-21-openjdk \
+    "${JAVA_PKG}" \
     gnome-keyring \
     libsecret \
     microsoft-edge-stable \
     intune-portal \
     microsoft-identity-broker
 
-# 8. User Service Setup Context (for non-root target user)
-TARGET_USER=${SUDO_USER:-$USER}
+# Disable the RHEL prod repo after install so it doesn't conflict with native Fedora updates
+$PKG_MGR config-manager setopt microsoft-rhel-prod.enabled=0 2>/dev/null || $PKG_MGR config-manager --set-disabled microsoft-rhel-prod 2>/dev/null || true
 
+# 7. Enable User Services
+TARGET_USER=${SUDO_USER:-$USER}
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   USER_ID=$(id -u "$TARGET_USER")
-  echo -e "${GREEN}[6/6] Enabling Intune systemd user services for user: ${TARGET_USER}...${NC}"
-  
-  # Enable user services via systemctl within the user's DBus session
+  echo -e "${GREEN}[*] Enabling Intune systemd user services for ${TARGET_USER}...${NC}"
   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable microsoft-identity-broker.service || true
   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable intune-agent.timer || true
 fi
@@ -104,10 +99,7 @@ fi
 echo -e "${BLUE}========================================================"${NC}
 echo -e "${GREEN} Setup Complete!${NC}"
 echo -e "${BLUE}========================================================"${NC}
-echo "RECOMMENDED NEXT STEPS:"
-echo "1. Reboot your machine to initialize GNOME Keyring & Identity Broker:"
-echo "   sudo reboot"
-echo ""
-echo "2. Launch 'Microsoft Intune' from your application menu and complete enrollment."
-echo "3. Open 'Microsoft Edge' and sign into your work profile."
+echo "1. Reboot your machine: sudo reboot"
+echo "2. Launch 'Microsoft Intune' and sign in."
+echo "3. Open 'Microsoft Edge' and log into your work profile."
 echo -e "${BLUE}========================================================"${NC}
