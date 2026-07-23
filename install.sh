@@ -89,13 +89,17 @@ $PKG_MGR install -y \
 # Disable the RHEL prod repo after install so it doesn't conflict with native Fedora updates
 $PKG_MGR config-manager setopt microsoft-rhel-prod.enabled=0 2>/dev/null || $PKG_MGR config-manager --set-disabled microsoft-rhel-prod 2>/dev/null || true
 
-# 7. Enable User Services
+# 7. Enable Background Sync Timers & Services
 TARGET_USER=${SUDO_USER:-$USER}
 if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   USER_ID=$(id -u "$TARGET_USER")
   echo -e "${GREEN}[*] Enabling Intune systemd user services for ${TARGET_USER}...${NC}"
-  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable microsoft-identity-broker.service || true
-  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable intune-agent.timer || true
+  
+  # Enable Intune background sync timer (if present)
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable intune-agent.timer 2>/dev/null || true
+  
+  # Enable the modern system-level device broker service (if present)
+  systemctl enable --now microsoft-identity-device-broker.service 2>/dev/null || true
 fi
 
 echo -e "${BLUE}========================================================"${NC}
