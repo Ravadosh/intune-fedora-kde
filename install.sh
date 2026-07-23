@@ -51,13 +51,15 @@ gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
 
 # Intune Repo (Microsoft hosts intune-portal under the RHEL prod channels)
+# Add both Microsoft keys to the gpgkey parameter for RHEL 10
 tee /etc/yum.repos.d/microsoft-rhel-prod.repo > /dev/null << 'EOF'
-[microsoft-rhel-prod]
-name=Microsoft RHEL Production (Intune)
+[microsoft-rhel10-prod]
+name=Microsoft RHEL 10 Production (Intune)
 baseurl=https://packages.microsoft.com/rhel/10/prod/
 enabled=1
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+       https://packages.microsoft.com/rhel/10/prod/repodata/repomd.xml.key
 EOF
 
 # 5. Refresh Cache
