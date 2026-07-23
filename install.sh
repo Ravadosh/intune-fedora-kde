@@ -97,9 +97,6 @@ if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
   
   # Enable Intune background sync timer (if present)
   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${USER_ID}" systemctl --user enable intune-agent.timer 2>/dev/null || true
-  
-  # Enable the modern system-level device broker service (if present)
-  systemctl enable --now microsoft-identity-device-broker.service 2>/dev/null || true
 fi
 
 echo -e "${BLUE}========================================================"${NC}
