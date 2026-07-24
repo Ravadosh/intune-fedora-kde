@@ -6,4 +6,4 @@ Microsoft recently released repos for RHEL10, which finally go for the updated w
 A lot of time has been spent trying to get it to work from a clean KDE install, to no avail, everytime the limitation being kdwallet which is pretty much brandished into Fedora KDE Plasma,
 The new process is to install Fedora Workstation (gnome) & enforce gnome-keyring to be the uncontested owner of secrets before even installing kde workspaces
 
-The script currently available is proven to be working.
+The script currently available is proven to be working for initial install of intune, edge and dependencies, testing of the rest of the process is the current situation.
